@@ -1,0 +1,136 @@
+var freq1 = Slot(1.0);
+var ad1 = AdjustableDelay(110.1, freq1);
+var lp1 = LowPass();
+
+function dsp(t) {
+  var ts = t % (0.1);
+  var ts2 = t % 0.15;
+  freq1(1/(400 + Math.floor(cos(t*tau)*50) + Math.cos(ts2*(100.0-Math.abs((t*2.4))))*100+200*cos(110*t*tau)));
+  var stroke = arp(ts, 1*noise(), 1, 100) + ad1();
+  ad1(lp1(stroke, 320000+Math.cos(ts*4.0)*10) * 0.99);
+  return 1.5 * stroke;
+}
+
+function arp(ts, x, y, z) {
+  return Math.sin(x * Math.exp(-ts * y)) * Math.exp(-ts * z);
+}
+
+var tau = Math.PI*2;
+var cos = Math.cos;
+var noise = function() {
+  return Math.random()*2 - 1;
+}
+var clamp = function(x, low, high) {
+  return Math.max(low, Math.min(high, x));
+}
+var sqr = function(x) {
+  return (x % (2*Math.PI)) >= Math.PI ? 1 : -1;
+}
+
+/*
+    butterworth filters, copied from http://basicsynth.com
+ */
+var sqr2 = 1.414213562;
+ 
+function LowPass() {
+  var dlyOut2 = 0, dlyOut1 = 0;
+  var dlyIn2  = 0, dlyIn1  = 0;
+  return function (x, cutoff_freq) {
+    var c  = 1.0 / Math.tan((Math.PI / sampleRate) * cutoff_freq);
+    var c2 = c*c;
+    var csqr2 = sqr2 * c;
+    var d = c2 + csqr2 + 1;
+    var In0 = 1 / d;
+    var In1 = In0 + In0;
+    var In2 = In0;
+    var Out1 = (2 * (1 - c2)) / d;
+    var Out2 = (c2 - csqr2 + 1) / d;
+    
+    var out = (In0 * x)
+            + (In1 * dlyIn1)
+            + (In2 * dlyIn2)
+            - (Out1 * dlyOut1)
+            - (Out2 * dlyOut2);
+    dlyOut2 = dlyOut1; dlyOut1 = out;
+    dlyIn2  = dlyIn1;  dlyIn1  = x;
+    return out;
+  };
+}
+ 
+function HighPass() {
+  var dlyOut2 = 0, dlyOut1 = 0;
+  var dlyIn2  = 0, dlyIn1  = 0;
+  return function (x, cutoff_freq) {
+    var c  = Math.tan((Math.PI / sampleRate) * cutoff_freq);
+    var c2 = c*c;
+    var csqr2 = sqr2 * c;
+    var d = c2 + csqr2 + 1;
+    var In0 = 1 / d;
+    var In1 = -(In0 + In0);
+    var In2 = In0;
+    var Out1 = (2 * (c2 - 1)) / d;
+    var Out2 = (1 - csqr2 + c2) / d;
+    
+    var out = (In0 * x)
+            + (In1 * dlyIn1)
+            + (In2 * dlyIn2)
+            - (Out1 * dlyOut1)
+            - (Out2 * dlyOut2);
+    dlyOut2 = dlyOut1; dlyOut1 = out;
+    dlyIn2  = dlyIn1;  dlyIn1  = x;
+    return out;
+  };
+}
+ 
+function BandPass() {
+  var dlyOut2 = 0, dlyOut1 = 0;
+  var dlyIn2  = 0, dlyIn1  = 0;
+  return function (x, cutoff_freq) {
+    var c = 1 / Math.tan((Math.PI / sampleRate) * cutoff_freq);
+    var d = 1 + c;
+    var In0 = 1 / d;
+    var In1 = 0;
+    var In2 = -In0;
+    var Out1 = (-c*2*Math.cos(2*Math.PI*cutoff_freq/sampleRate)) / d;
+    var Out2 = (c - 1) / d;
+    
+    var out = (In0 * x)
+            + (In1 * dlyIn1)
+            + (In2 * dlyIn2)
+            - (Out1 * dlyOut1)
+            - (Out2 * dlyOut2);
+    dlyOut2 = dlyOut1; dlyOut1 = out;
+    dlyIn2  = dlyIn1;  dlyIn1  = x;
+    return out;
+  };
+}
+
+function Delay(duration) {
+  var line = new Float32Array(Math.ceil(duration * sampleRate));
+  var i = 0;
+  return function (x) {
+    if (x === undefined) return line[(i+1)%line.length];
+    line[i] = x;
+    return line[(i = (i + 1)%line.length)];
+  };
+}
+
+function AdjustableDelay(maxDuration, fn) {
+  var line = new Float32Array(Math.ceil(maxDuration * sampleRate));
+  var L = line.length;
+  var i = 0;
+  return function (x) {
+    k = (i + (L-1) - Math.min(L-2, Math.floor(fn() * sampleRate))) % L;
+    if (x === undefined) return line[k];
+    line[i] = x;
+    i = (i + 1) % L;
+    return line[k];
+  };
+}
+
+function Slot(value) {
+  return function (x) {
+    if (x !== undefined) value = x;
+    return value;
+  };
+}
